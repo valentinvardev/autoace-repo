@@ -134,8 +134,13 @@ function batchShell(b) {
       <span class="label" id="bCount"></span>
       <span class="spacer"></span>
       <div class="menu-wrap">
-        <button class="btn" id="dlBtn" aria-haspopup="menu">Download
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 3.5 5 7.5 9 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <button class="btn" id="dlBtn" aria-haspopup="menu">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M7 1.75v6.5m0 0L4.5 5.75M7 8.25l2.5-2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 10v1.5a.75.75 0 0 0 .75.75h8.5a.75.75 0 0 0 .75-.75V10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          Download
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M1 3.5 5 7.5 9 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         </button>
         <div class="menu" id="dlMenu" role="menu">
           <button data-fmt="csv" role="menuitem">CSV<span>name,result_json — same shape as the manifest</span></button>
