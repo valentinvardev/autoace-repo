@@ -145,14 +145,25 @@ def _to_flac_16k(path: str) -> bytes:
 
 class GeminiAnalyzer:
     def __init__(self, api_key: str | None = None, models: list[str] | None = None):
-        self.client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
+        # hard per-request timeout: a hung HTTPS call would otherwise block a
+        # worker thread (and its whole queue) indefinitely
+        self.client = genai.Client(
+            api_key=api_key or os.environ["GEMINI_API_KEY"],
+            http_options=types.HttpOptions(timeout=120_000),  # ms
+        )
         self.models = models or MODEL_CHAIN
 
-    def analyze(self, path: str, max_attempts: int = 3) -> LLMResult:
+    def analyze(self, path: str, max_attempts: int = 3,
+                deadline_s: float = 300.0) -> LLMResult:
+        """Retries across the model chain but never past `deadline_s` total;
+        the caller marks the file failed and the batch continues."""
         audio = _to_flac_16k(path)
+        t0 = time.monotonic()
         last: Exception | None = None
         for model in self.models:
             for attempt in range(max_attempts):
+                if time.monotonic() - t0 > deadline_s:
+                    raise LLMError(f"deadline {deadline_s:.0f}s exceeded: {last}") from last
                 try:
                     return self._call(model, audio)
                 except Exception as e:  # noqa: BLE001 - any API failure retries
