@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=6">
+<link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
 <div class="shell">
@@ -27,9 +27,11 @@
     <label class="drop" id="drop">
       <div id="dropIdle">
         <strong>Upload an evaluation batch</strong> — drop a ZIP here or click to browse.
-        <div class="hint">Audio files at the root plus one <code>labels.csv</code>
-        manifest (<code>name,result_json</code>). A file that fails is reported
-        alone; the batch keeps going.</div>
+        <div class="hint">Audio files at the root, optionally with a
+        <code>name,result_json</code> CSV manifest. The manifest is not required:
+        without it every audio file is analyzed, and rows with an empty
+        <code>result_json</code> work too. A file that fails is reported alone;
+        the batch keeps going.</div>
       </div>
       <div id="dropBusy" class="upload-progress" hidden>
         <div class="row"><span id="upLabel">Uploading…</span><span id="upPct"></span></div>
@@ -41,6 +43,6 @@
   </main>
 </div>
 <div class="toast" id="toast" role="status"></div>
-<script src="/static/app.js?v=6"></script>
+<script src="/static/app.js?v=7"></script>
 </body>
 </html>

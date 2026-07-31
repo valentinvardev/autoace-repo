@@ -162,6 +162,9 @@ a { color: var(--blue); text-decoration: none; }
   background: var(--amber-soft); border: 1px solid color-mix(in srgb, var(--amber) 25%, transparent);
   border-radius: 6px; padding: 7px 12px; margin-bottom: 6px;
 }
+.warnings li.note {
+  color: var(--muted); background: var(--card); border-color: var(--border);
+}
 
 /* ---------------- dropdown ---------------- */
 .menu-wrap { position: relative; }

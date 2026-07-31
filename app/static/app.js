@@ -195,7 +195,8 @@ function updateBatchView(b) {
     banner.hidden = true;
   }
 
-  $('#bWarnings').innerHTML = (b.warnings || []).map(w => `<li>${w}</li>`).join('');
+  $('#bWarnings').innerHTML = (b.warnings || []).map(w =>
+    `<li class="${w.startsWith('Note:') ? 'note' : ''}">${w}</li>`).join('');
 
   const ordered = [...b.files].sort((a, z) =>
     (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[z.status] ?? 9)

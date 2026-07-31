@@ -76,7 +76,11 @@ def create_batch_from_upload(files: list[tuple[str, bytes]], batch_name: str) ->
     warnings: list[str] = []
     manifest: dict[str, str] = {}
     if not manifests:
-        warnings.append("no CSV manifest found; processing every audio file unlabeled")
+        # Not a problem: the manifest is optional, and an unlabeled hidden set
+        # is exactly the expected case. Phrased as a note so it does not read
+        # as a failure. ("Note: " prefixes render as neutral in the UI.)
+        warnings.append("Note: no CSV manifest in this upload — every audio "
+                        "file was analyzed without expected labels.")
     else:
         if len(manifests) > 1:
             warnings.append(f"multiple CSVs found ({manifests}); using {manifests[0]}")
