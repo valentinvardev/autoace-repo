@@ -41,6 +41,13 @@ def submit(batch_id: str, file_id: int, path: str) -> None:
     _q.put((batch_id, file_id, path))
 
 
+def _clean(msg: str, path: str) -> str:
+    """Errors are shown to evaluators and land in the results CSV: report the
+    filename, not the server's internal storage layout."""
+    from pathlib import Path
+    return msg.replace(path, Path(path).name).replace("\\", "/")[:300]
+
+
 def _process(batch_id: str, file_id: int, path: str) -> None:
     from autoace_pipeline.pipeline import analyze_full
 
@@ -66,11 +73,11 @@ def _process(batch_id: str, file_id: int, path: str) -> None:
             cost_usd=r["llm"].cost_usd,
         )
     except IngestError as e:
-        db.set_file_status(file_id, "failed", error=f"unreadable audio: {e}",
+        db.set_file_status(file_id, "failed", error=_clean(f"unreadable audio: {e}", path),
                            wall_s=round(time.perf_counter() - t0, 2))
     except Exception as e:  # noqa: BLE001 - any per-file crash must not kill the batch
         traceback.print_exc()
-        db.set_file_status(file_id, "failed", error=str(e)[:300],
+        db.set_file_status(file_id, "failed", error=_clean(str(e), path),
                            wall_s=round(time.perf_counter() - t0, 2))
     finally:
         db.finish_batch_if_done(batch_id)
