@@ -12,6 +12,7 @@ import io
 import json
 import os
 import secrets
+import shutil
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -161,6 +162,19 @@ def get_batch(batch_id: str, user: str = Depends(require_auth)):
         f["expected"] = json.loads(f["expected_json"]) if f["expected_json"] else None
         del f["result_json"], f["expected_json"]
     return {**b, "files": files, "worker_ready": worker.is_ready()}
+
+
+@app.delete("/api/batches/{batch_id}")
+def delete_batch(batch_id: str, user: str = Depends(require_auth)):
+    """Remove a batch, its rows, and its uploaded audio from disk."""
+    if not db.delete_batch(batch_id):
+        raise HTTPException(404)
+    # resolve() before the check so a crafted id cannot escape the data dir
+    root = (Path(os.environ.get("DATA_DIR", "data")) / "batches").resolve()
+    target = (root / batch_id).resolve()
+    if target.is_relative_to(root) and target.is_dir():
+        shutil.rmtree(target, ignore_errors=True)
+    return {"ok": True}
 
 
 @app.get("/api/files/{file_id}")

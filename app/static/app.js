@@ -147,6 +147,13 @@ function batchShell(b) {
           <button data-fmt="json" role="menuitem">JSON<span>full results with per-file status</span></button>
         </div>
       </div>
+      <button class="btn" id="delBtn" title="Delete this batch">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M2.5 3.75h9M5.75 3.75V2.5h2.5v1.25M3.75 3.75l.5 7.75a.75.75 0 0 0 .75.75h4a.75.75 0 0 0 .75-.75l.5-7.75"
+                stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Delete
+      </button>
     </div>
     <div class="batch-meta" id="bMeta"></div>
     <div class="banner" id="bBanner" hidden></div>
@@ -174,6 +181,7 @@ function updateBatchView(b) {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.classList.remove('open'); });
     menu.querySelectorAll('button').forEach(mi => mi.addEventListener('click', () =>
       location.href = `/api/batches/${b.id}/download.${mi.dataset.fmt}`));
+    $('#delBtn').addEventListener('click', () => deleteBatch(b.id, b.name));
   }
 
   const done = (b.counts.done || 0), failed = (b.counts.failed || 0);
@@ -341,6 +349,25 @@ function renderList(items) {
 async function refreshList(selectId) {
   renderList(await api('/api/batches'));
   if (selectId) selectBatch(selectId);
+}
+
+async function deleteBatch(id, name) {
+  if (!confirm(`Delete "${name}" and its uploaded audio? This cannot be undone.`)) return;
+  try {
+    await api(`/api/batches/${id}`, { method: 'DELETE' });
+  } catch (e) {
+    toast(`Could not delete: ${e.message}`);
+    return;
+  }
+  clearTimeout(pollTimer);
+  if (currentBatch === id) {
+    currentBatch = null;
+    const view = $('#batchView');
+    view.dataset.batch = '';
+    view.innerHTML = '<div class="empty">No batch selected yet — upload one to begin.</div>';
+  }
+  toast('Batch deleted.');
+  renderList(await api('/api/batches'));
 }
 
 async function selectBatch(id) {

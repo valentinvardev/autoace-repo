@@ -118,6 +118,18 @@ def file_detail(file_id: int) -> dict | None:
     return dict(r) if r else None
 
 
+def delete_batch(batch_id: str) -> bool:
+    """Drop a batch and its file rows. Returns False if it never existed."""
+    with _lock:
+        cur = con().execute("SELECT 1 FROM batches WHERE id = ?", (batch_id,))
+        if cur.fetchone() is None:
+            return False
+        con().execute("DELETE FROM files WHERE batch_id = ?", (batch_id,))
+        con().execute("DELETE FROM batches WHERE id = ?", (batch_id,))
+        con().commit()
+        return True
+
+
 def list_batches(limit: int = 50) -> list[dict]:
     out = []
     for b in con().execute(
