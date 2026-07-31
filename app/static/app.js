@@ -389,7 +389,7 @@ function uploadXHR(fd) {
   });
 }
 
-async function upload(files) {
+async function upload(files, folder = '') {
   const drop = $('#drop');
   if (drop.classList.contains('busy')) return;
   drop.classList.add('busy');
@@ -400,9 +400,9 @@ async function upload(files) {
 
   const fd = new FormData();
   [...files].forEach(f => fd.append('files', f));
-  fd.append('name', files.length === 1
+  fd.append('name', folder || (files.length === 1
     ? files[0].name.replace(/\.zip$/i, '')
-    : `batch ${new Date().toLocaleTimeString()}`);
+    : `batch ${new Date().toLocaleTimeString()}`));
   try {
     const r = await uploadXHR(fd);
     toast('Batch created — analysis starts now.');
@@ -417,15 +417,61 @@ async function upload(files) {
   }
 }
 
+/* Dropping a folder yields directory entries, not files: dataTransfer.files
+   is empty for them, so a dropped folder would silently do nothing. Walk the
+   entry tree instead and collect every file inside. */
+function walkEntry(entry, out) {
+  return new Promise(resolve => {
+    if (entry.isFile) {
+      entry.file(f => { out.push(f); resolve(); }, () => resolve());
+      return;
+    }
+    if (!entry.isDirectory) { resolve(); return; }
+    const reader = entry.createReader();
+    const readBatch = () => reader.readEntries(async batch => {
+      if (!batch.length) { resolve(); return; }  // readEntries pages at 100
+      await Promise.all(batch.map(e => walkEntry(e, out)));
+      readBatch();
+    }, () => resolve());
+    readBatch();
+  });
+}
+
+async function filesFromDrop(dt) {
+  const entries = [...(dt.items || [])]
+    .map(i => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null))
+    .filter(Boolean);
+  if (!entries.length) return { files: [...dt.files], folder: '' };
+  const files = [];
+  await Promise.all(entries.map(e => walkEntry(e, files)));
+  const dirs = entries.filter(e => e.isDirectory);
+  return { files, folder: dirs.length === 1 ? dirs[0].name : '' };
+}
+
 const drop = $('#drop');
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-drop.addEventListener('drop', e => {
+drop.addEventListener('drop', async e => {
   e.preventDefault(); drop.classList.remove('over');
-  if (e.dataTransfer.files.length) upload(e.dataTransfer.files);
+  const { files, folder } = await filesFromDrop(e.dataTransfer);
+  if (files.length) upload(files, folder);
+  else toast('That drop contained no files. Drop a folder, a ZIP, or audio files.');
 });
 $('#fileInput').addEventListener('change', e => {
   if (e.target.files.length) upload(e.target.files);
+});
+$('#pickFolder').addEventListener('click', e => {
+  // the button lives inside the drop <label>, which would otherwise open the
+  // file picker instead of the folder picker
+  e.preventDefault();
+  e.stopPropagation();
+  $('#folderInput').click();
+});
+$('#folderInput').addEventListener('change', e => {
+  const files = [...e.target.files];
+  if (!files.length) return;
+  const folder = (files[0].webkitRelativePath || '').split('/')[0];
+  upload(files, folder);
 });
 $('#logout').addEventListener('click', async () => {
   await fetch('/api/logout', { method: 'POST' });

@@ -43,9 +43,11 @@ cp .env.example .env       # fill in the values below
 uvicorn app.main:app --port 8000
 ```
 
-Open http://localhost:8000, sign in, drop a ZIP containing audio files at
-the root plus one `labels.csv` (`name,result_json`; `result_json` may be
-empty). CLI alternative without the dashboard:
+Open http://localhost:8000, sign in, and drop a **folder or a ZIP** on the
+upload area (or use "Select a folder instead"). A batch is audio files at
+the root, optionally with a `labels.csv` manifest (`name,result_json`;
+`result_json` may be empty, and the manifest itself is optional). CLI
+alternative without the dashboard:
 
 ```bash
 python -m autoace_pipeline.cli --full path/to/*.ogg --json results.json
@@ -86,6 +88,8 @@ download at first boot using `HF_TOKEN`.
   automatically on boot.
 - Results download as CSV (`name,result_json`, same shape as the input
   manifest) or JSON, preserving original filenames.
+- `deliverables/predictions.csv` holds the predictions for the three
+  provided calls, exported from the deployed system.
 
 ## Data handling
 
