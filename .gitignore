@@ -1,0 +1,28 @@
+# Confidential production audio — never commit
+resources/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+
+# Model weights / caches
+models/
+*.ckpt
+*.pt
+*.onnx
+
+# Scratch outputs
+out/
+*.wav.tmp
+
+# Docs not for the deliverable repo
+*.pdf
+autoace-plan-tecnico.md
+analysis/audit_results.json
+!.env.example
