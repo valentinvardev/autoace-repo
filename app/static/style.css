@@ -267,6 +267,8 @@ a { color: var(--blue); text-decoration: none; }
   transition: transform 0.3s var(--ease); flex: none;
 }
 .strip[aria-expanded="true"] .chev { transform: rotate(90deg); }
+/* Only visible on a cache miss, which prefetching makes rare. */
+.strip.loading .chev { animation: spin 0.7s linear infinite; opacity: 0.5; }
 .detail-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px 20px; margin: 14px 0;

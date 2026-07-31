@@ -91,11 +91,18 @@ function ensureRow(f) {
     rowCache.set(f.id, row);
   }
   if (row._sig !== signature) {
+    // status/result changed, so any cached detail is stale
+    if (row._sig !== undefined) detailCache.delete(f.id);
     row._sig = signature;
     row.innerHTML = rowContent(f);
-    row.querySelector('.strip').addEventListener('click', () => toggleDetail(f.id));
+    const strip = row.querySelector('.strip');
+    strip.addEventListener('click', () => toggleDetail(f.id));
+    if (f.status === 'done' || f.status === 'failed') {
+      strip.addEventListener('mouseenter', () => prefetchDetail(f.id));
+      strip.addEventListener('focus', () => prefetchDetail(f.id));
+    }
     if (openDetails.has(f.id)) {
-      loadDetail(f.id, row.querySelector(`[data-detail="${f.id}"] .detail-inner`));
+      restoreDetail(f.id, row.querySelector(`[data-detail="${f.id}"] .detail-inner`));
     }
   }
   return row;
@@ -202,9 +209,70 @@ function updateBatchView(b) {
     (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[z.status] ?? 9)
     || a.filename.localeCompare(z.filename));
   reorderRows($('#rows'), ordered.map(ensureRow));
+
+  // Warm finished rows while the browser is idle so the first expand of any
+  // row is instant, including for keyboard and touch users who never hover.
+  const idle = window.requestIdleCallback || (fn => setTimeout(fn, 400));
+  idle(() => ordered
+    .filter(f => (f.status === 'done' || f.status === 'failed') && !detailCache.has(f.id))
+    .slice(0, 12)
+    .forEach(f => prefetchDetail(f.id)));
 }
 
 /* ---------------- detail ---------------- */
+
+/* Detail payloads are immutable once a file is done, so they are fetched
+   at most once and kept. Content is rendered BEFORE the panel opens: a
+   panel that expands to a spinner and then jumps to full height animates
+   twice and reads as broken. */
+const detailCache = new Map(); // id -> Promise<detail>
+
+function fetchDetail(id) {
+  if (!detailCache.has(id)) {
+    detailCache.set(id, api(`/api/files/${id}`).catch(e => {
+      detailCache.delete(id); // a failed fetch must not poison later attempts
+      throw e;
+    }));
+  }
+  return detailCache.get(id);
+}
+
+/* Warm the cache while the pointer is still travelling to the row. */
+function prefetchDetail(id) {
+  fetchDetail(id).catch(() => {});
+}
+
+function detailHTML(f) {
+  const ft = f.detail?.features || {};
+  const llm = f.detail?.llm || {};
+  const trace = f.detail?.trace || {};
+  const kv = (label, v) => `<div class="kv"><b>${label}</b>${v ?? '—'}</div>`;
+  return `<div class="detail-body">
+    <div class="detail-grid">
+      ${kv('duration', ft.duration_s + ' s')}
+      ${kv('snr', ft.snr_db + ' dB')}
+      ${kv('pause floor', (ft.pause_floor_db ?? '—') + ' dBFS')}
+      ${kv('max gap', ft.max_gap_s + ' s @ ' + (ft.max_gap_at_s ?? '—') + ' s')}
+      ${kv('clip runs ≥3', ft.clip_runs_ge3)}
+      ${kv('clicks/min (pause)', ft.clicks_per_min_pause)}
+      ${kv('dropouts/min', ft.dropouts_per_min)}
+      ${kv('dual mono', ft.is_dual_mono)}
+      ${kv('overlap s', f.detail?.overlap?.overlap_total_s ?? '—')}
+      ${kv('ser dominant', f.detail?.ser?.dominant ?? '—')}
+      ${kv('llm model', llm.model)}
+      ${kv('llm latency', llm.latency_s + ' s')}
+      ${kv('analysis wall', f.wall_s + ' s')}
+      ${kv('api cost', '$' + (f.cost_usd ?? 0))}
+    </div>
+    <div class="evidence">
+      ${llm.tone_evidence ? `<p><b>Tone evidence:</b> ${llm.tone_evidence}</p>` : ''}
+      ${llm.noise_evidence ? `<p><b>Noise evidence:</b> ${llm.noise_evidence}</p>` : ''}
+      ${trace.noise_rule ? `<p><b>Noise decision:</b> ${trace.noise_rule}</p>` : ''}
+      ${(trace.ser_notes || []).map(n => `<p><b>SER:</b> ${n}</p>`).join('')}
+      ${f.expected ? `<p>${agreementNote(f.result, f.expected)}</p>` : ''}
+    </div>
+  </div>`;
+}
 
 async function toggleDetail(id) {
   const wrap = document.querySelector(`[data-detail="${id}"]`);
@@ -216,49 +284,28 @@ async function toggleDetail(id) {
     strip.setAttribute('aria-expanded', 'false');
     return;
   }
+  // On a cache hit this resolves within the same frame, so filling the
+  // panel and opening it land together and the height animates once.
+  strip.classList.add('loading');
+  try {
+    wrap.firstElementChild.innerHTML = detailHTML(await fetchDetail(id));
+  } catch (e) {
+    wrap.firstElementChild.innerHTML =
+      `<div class="detail-body"><span class="mismatch">could not load detail: ${e.message}</span></div>`;
+  } finally {
+    strip.classList.remove('loading');
+  }
   openDetails.add(id);
   wrap.classList.add('open');
   strip.setAttribute('aria-expanded', 'true');
-  await loadDetail(id, wrap.firstElementChild);
 }
 
-async function loadDetail(id, el) {
+/* Re-fill an already-open panel after its row re-renders during polling. */
+async function restoreDetail(id, el) {
   if (!el) return;
-  el.innerHTML = '<div class="detail-body"><span class="spinner"></span></div>';
   try {
-    const f = await api(`/api/files/${id}`);
-    const ft = f.detail?.features || {};
-    const llm = f.detail?.llm || {};
-    const trace = f.detail?.trace || {};
-    const kv = (label, v) => `<div class="kv"><b>${label}</b>${v ?? '—'}</div>`;
-    el.innerHTML = `
-      <div class="detail-body">
-      <div class="detail-grid">
-        ${kv('duration', ft.duration_s + ' s')}
-        ${kv('snr', ft.snr_db + ' dB')}
-        ${kv('pause floor', (ft.pause_floor_db ?? '—') + ' dBFS')}
-        ${kv('max gap', ft.max_gap_s + ' s @ ' + (ft.max_gap_at_s ?? '—') + ' s')}
-        ${kv('clip runs ≥3', ft.clip_runs_ge3)}
-        ${kv('clicks/min (pause)', ft.clicks_per_min_pause)}
-        ${kv('dropouts/min', ft.dropouts_per_min)}
-        ${kv('dual mono', ft.is_dual_mono)}
-        ${kv('overlap s', f.detail?.overlap?.overlap_total_s ?? '—')}
-        ${kv('ser dominant', f.detail?.ser?.dominant ?? '—')}
-        ${kv('llm model', llm.model)}
-        ${kv('llm latency', llm.latency_s + ' s')}
-        ${kv('analysis wall', f.wall_s + ' s')}
-        ${kv('api cost', '$' + (f.cost_usd ?? 0))}
-      </div>
-      <div class="evidence">
-        ${llm.tone_evidence ? `<p><b>Tone evidence:</b> ${llm.tone_evidence}</p>` : ''}
-        ${llm.noise_evidence ? `<p><b>Noise evidence:</b> ${llm.noise_evidence}</p>` : ''}
-        ${trace.noise_rule ? `<p><b>Noise decision:</b> ${trace.noise_rule}</p>` : ''}
-        ${(trace.ser_notes || []).map(n => `<p><b>SER:</b> ${n}</p>`).join('')}
-        ${f.expected ? `<p>${agreementNote(f.result, f.expected)}</p>` : ''}
-      </div></div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="detail-body"><span class="mismatch">could not load detail: ${e.message}</span></div>`;
-  }
+    el.innerHTML = detailHTML(await fetchDetail(id));
+  } catch { /* leave the panel empty rather than flashing an error */ }
 }
 
 function agreementNote(result, expected) {
