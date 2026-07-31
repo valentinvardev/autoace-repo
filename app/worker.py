@@ -82,11 +82,14 @@ def _prewarm() -> None:
     """Load every model once, sequentially, before accepting work.
     Concurrent first-loads of the torch stacks crash natively on some
     platforms, and pre-warming moves the ~60 s load cost off the first file."""
-    for name, fn in (
+    loaders = [
         ("silero", lambda: __import__("autoace_pipeline.vad", fromlist=["_model"])._model()),
         ("pyannote", lambda: __import__("autoace_pipeline.overlap", fromlist=["_pipeline"])._pipeline()),
-        ("sensevoice", lambda: __import__("autoace_pipeline.ser", fromlist=["_model"])._model()),
-    ):
+    ]
+    if os.environ.get("DISABLE_SER") != "1":
+        loaders.append(("sensevoice",
+                        lambda: __import__("autoace_pipeline.ser", fromlist=["_model"])._model()))
+    for name, fn in loaders:
         try:
             fn()
             print(f"[prewarm] {name} ready")

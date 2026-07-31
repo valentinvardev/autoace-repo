@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from . import dsp
@@ -138,13 +140,14 @@ def analyze_full(path: str) -> dict:
         overlap_info = {"error": str(e)[:200]}
 
     ser_info = None
-    try:
-        from . import ser, vad
-        spans = vad.speech_spans(audio.mono16k, audio.duration_s)
-        ser_info = ser.analyze_segments(audio.mono16k, spans)
-    except Exception as e:  # noqa: BLE001
-        ser_info = None
-        overlap_info.setdefault("ser_error", str(e)[:200])
+    if os.environ.get("DISABLE_SER") != "1":
+        try:
+            from . import ser, vad
+            spans = vad.speech_spans(audio.mono16k, audio.duration_s)
+            ser_info = ser.analyze_segments(audio.mono16k, spans)
+        except Exception as e:  # noqa: BLE001
+            ser_info = None
+            overlap_info.setdefault("ser_error", str(e)[:200])
 
     try:
         llm = llm_future.result()
