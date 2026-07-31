@@ -231,6 +231,29 @@ def evaluate(cases: list[dict]) -> dict:
     return per_field
 
 
+def per_class_metrics(pairs: list[tuple[str, str]], labels: list[str]):
+    """Per-class precision/recall/F1 and macro F1.
+
+    Macro F1 averages over classes present in the ground truth, so a class
+    the corpus never contains cannot drag the average down. It is the metric
+    the evaluation criteria name: unlike accuracy, it cannot be inflated by
+    a dominant class, so always predicting the majority answer scores badly.
+    """
+    rows, f1s = [], []
+    for c in labels:
+        tp = sum(1 for g, p in pairs if g == c and p == c)
+        fp = sum(1 for g, p in pairs if g != c and p == c)
+        fn = sum(1 for g, p in pairs if g == c and p != c)
+        support = tp + fn
+        prec = tp / (tp + fp) if tp + fp else 0.0
+        rec = tp / support if support else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
+        if support:
+            f1s.append(f1)
+        rows.append((c, prec, rec, f1, support))
+    return rows, (sum(f1s) / len(f1s) if f1s else 0.0)
+
+
 def report(per_field: dict) -> str:
     lines = ["# Synthetic validation report",
              "",
@@ -241,13 +264,20 @@ def report(per_field: dict) -> str:
     for field, pairs in per_field.items():
         labels = sorted({g for g, _ in pairs} | {p for _, p in pairs})
         acc = sum(g == p for g, p in pairs) / len(pairs)
-        lines += [f"## {field} — accuracy {acc:.2%} (n={len(pairs)})", ""]
+        rows, macro = per_class_metrics(pairs, labels)
+        lines += [f"## {field} — accuracy {acc:.2%}, macro F1 {macro:.3f} "
+                  f"(n={len(pairs)})", ""]
         lines += ["| gt \\ pred | " + " | ".join(labels) + " |",
                   "|---|" + "---|" * len(labels)]
         for g in labels:
             row = [str(sum(1 for gg, pp in pairs if gg == g and pp == p)) for p in labels]
             if any(gg == g for gg, _ in pairs):
                 lines.append(f"| **{g}** | " + " | ".join(row) + " |")
+        lines += ["", "| class | precision | recall | F1 | support |",
+                  "|---|---|---|---|---|"]
+        for c, p, r, f1, sup in rows:
+            if sup:
+                lines.append(f"| {c} | {p:.2f} | {r:.2f} | {f1:.2f} | {sup} |")
         lines.append("")
     return "\n".join(lines)
 

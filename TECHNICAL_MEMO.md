@@ -92,14 +92,18 @@ filtering, packet loss, inserted silences of known duration, click trains at
 known rates, level-matched overlapped speech. Full confusion matrices in
 [`analysis/validation_report.md`](analysis/validation_report.md); summary:
 
-| Field (local path) | Accuracy | Notes |
-|---|---|---|
-| `long_silence` | 100% (55/55) | gaps recovered within one frame |
-| static suspicion | 96% | |
-| `audio_quality` | 91% | misses concentrate at tier boundaries |
-| noise presence | 90% | all misses are speech-like noise (see below) |
-| noise severity | 85% | |
-| overlap | 80% | misses only overlap events ≤1 s per occurrence |
+| Field (local path) | Accuracy | Macro F1 | Notes |
+|---|---|---|---|
+| `long_silence` | 100% (55/55) | 1.000 | gaps recovered within one frame |
+| static suspicion | 96% | 0.889 | |
+| `audio_quality` | 91% | 0.899 | misses concentrate at tier boundaries |
+| noise presence | 90% | 0.904 | all misses are speech-like noise (see below) |
+| noise severity | 85% | 0.814 | per-class F1 0.75–0.91 across four levels |
+| overlap | 80% | 0.800 | misses only overlap events ≤1 s per occurrence |
+
+Macro F1 is reported alongside accuracy because accuracy alone rewards
+predicting the dominant class; the report also gives per-class precision,
+recall, F1 and support for every field.
 
 **The fusion experiment:** the babble subset (speech-like noise, the local
 path's known blind spot) run through local+LLM fusion moved presence
@@ -116,20 +120,17 @@ honest statement is leave-one-out behavior: the routing and thresholds were
 chosen from measured evidence, and the emotion boundary cases are exactly
 where more labeled data is needed (next steps).
 
-**On macro F1 for emotional tone.** The evaluation criteria name accuracy and
-macro F1, and macro F1 is the right choice for this problem: it weights every
-tone equally, so a model that always answers `neutral` on a corpus that is
-mostly neutral cannot hide behind a high accuracy while missing every
-escalated caller — which is precisely the case that carries the business
-value. We do not report it here because it is not computable in a meaningful
-way from three calls: the labels cover three of the five classes with exactly
-one example each, so per-class F1 can only come out 0.0 or 1.0 and the average
-of those is noise, not a measurement. The acoustic fields, where the synthetic
-corpus supplies dozens of examples per class, are reported with full confusion
-matrices above; per-class F1 follows directly from them. With a labeled set of
-roughly 200 calls, macro F1 with confidence intervals over grouped
-(per-caller) cross-validation folds is the metric we would report and tune
-against.
+**On macro F1.** It is the right metric for this problem and it is reported
+for every field where it is computable (table above, per-class breakdowns in
+the report): unlike accuracy it cannot be inflated by a dominant class, so a
+model that always answers the majority label scores badly — on a 90/10
+corpus, always predicting the majority yields 90% accuracy but macro F1 0.47.
+The one field where we do **not** report it is `emotional_tone`, and not by
+omission: three labeled calls cover three of five classes with exactly one
+example each, so per-class F1 can only come out 0.0 or 1.0 and averaging
+those produces noise, not a measurement. With a labeled set of roughly 200
+calls, macro F1 with confidence intervals over grouped (per-caller)
+cross-validation folds is what we would report and tune against.
 
 **Leakage disclosure:** the synthetic carriers derive from the same three
 calls used for calibration; thresholds fitted on that corpus are therefore
