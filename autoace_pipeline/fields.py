@@ -17,22 +17,28 @@ CAL = {
     # hold while an agent checks something does not count. Bar sits above it.
     "long_silence_s": 10.0,
 
-    # pause-floor bands for noise severity (dBFS), provisional
-    "noise_floor_low": -55.0,
-    "noise_floor_medium": -45.0,
-    "noise_floor_high": -35.0,
+    # pause-SNR bands for steady-noise severity (dB between speech level and
+    # pause floor); robust to absolute-level differences between clips.
+    # Fitted against the synthetic corpus (see analysis/synthetic_validation.py)
+    "noise_snr_none": 40.0,    # cleaner than this: no meaningful noise
+    "noise_snr_low": 28.0,     # audible, not interfering
+    "noise_snr_medium": 15.0,  # occasionally interferes; below: high
 
-    # impulsive static (pause-gated clicks/min), provisional
-    "clicks_low": 10.0,
-    "clicks_medium": 40.0,
+    # impulsive static (pause-gated clicks/min). Set above the natural
+    # transient chatter of the clean calls (4-14/min); genuine static also
+    # registers through the HF-ratio path.
+    "clicks_low": 20.0,
+    "clicks_medium": 100.0,
+    "static_hf_ratio": 0.003,
 
-    # audio quality, provisional; all three labeled calls are `clear`
-    # at SNR 50-57 dB with clip runs up to 10 samples
+    # audio quality; validated against the synthetic corpus
     "quality_snr_slight": 25.0,
     "quality_snr_severe": 12.0,
-    "quality_cliprate_slight": 30.0,   # runs>=3 per minute
-    "quality_cliprate_severe": 200.0,
-    "quality_rolloff_slight": 1000,    # Hz; telephony floor is ~
+    "quality_clipfrac_slight": 0.002,  # fraction of samples in runs >= 3
+    "quality_clipfrac_severe": 0.02,
+    "quality_dropout_slight": 10.0,    # zero-holes per speech-minute
+    "quality_dropout_severe": 100.0,
+    "quality_rolloff_slight": 1000,    # Hz
     "quality_rolloff_severe": 600,
 }
 
@@ -55,14 +61,16 @@ def decide_long_silence(f: Features) -> bool:
 def decide_audio_quality(f: Features) -> AudioQuality:
     severe = (
         f.snr_db < CAL["quality_snr_severe"]
-        or f.clip_runs_per_min > CAL["quality_cliprate_severe"]
+        or f.clip_frac > CAL["quality_clipfrac_severe"]
+        or f.dropouts_per_min > CAL["quality_dropout_severe"]
         or (f.rolloff95_hz and f.rolloff95_hz < CAL["quality_rolloff_severe"])
     )
     if severe:
         return "severely_impaired"
     slight = (
         f.snr_db < CAL["quality_snr_slight"]
-        or f.clip_runs_per_min > CAL["quality_cliprate_slight"]
+        or f.clip_frac > CAL["quality_clipfrac_slight"]
+        or f.dropouts_per_min > CAL["quality_dropout_slight"]
         or (f.rolloff95_hz and f.rolloff95_hz < CAL["quality_rolloff_slight"])
     )
     return "slightly_impaired" if slight else "clear"
@@ -76,27 +84,32 @@ def decide_noise_local(f: Features) -> tuple[bool, Severity, bool]:
     (TV, chatter) can hide from both — the LLM's perceptual vote covers that
     side in fusion.
     """
-    floor = f.pause_floor_db if f.pause_floor_db is not None else f.noise_floor_db
+    snr = f.pause_snr_db if f.pause_snr_db is not None else f.snr_db
 
-    if floor > CAL["noise_floor_high"]:
+    if snr < CAL["noise_snr_medium"]:
         steady: Severity = "high"
-    elif floor > CAL["noise_floor_medium"]:
+    elif snr < CAL["noise_snr_low"]:
         steady = "medium"
-    elif floor > CAL["noise_floor_low"]:
+    elif snr < CAL["noise_snr_none"]:
         steady = "low"
     else:
         steady = "none"
 
-    if f.clicks_per_min_pause > CAL["clicks_medium"]:
+    # packet-loss boundary transients are quality damage, not background noise
+    clicks = 0.0 if f.dropouts_per_min > CAL["quality_dropout_slight"] else f.clicks_per_min_pause
+    if clicks > CAL["clicks_medium"]:
         impulsive: Severity = "medium"
-    elif f.clicks_per_min_pause > CAL["clicks_low"]:
+    elif clicks > CAL["clicks_low"]:
         impulsive = "low"
     else:
         impulsive = "none"
 
     order = ["none", "low", "medium", "high"]
     severity: Severity = max(steady, impulsive, key=order.index)  # type: ignore[assignment]
-    static_suspected = impulsive != "none" or f.hf_energy_ratio > 0.003
+    # static is impulsive by nature: pause-gated clicks, or elevated HF energy
+    # WITHOUT steady broadband noise (which would explain the HF on its own)
+    static_suspected = impulsive != "none" or (
+        f.hf_energy_ratio > CAL["static_hf_ratio"] and steady == "none")
     return severity != "none", severity, static_suspected
 
 

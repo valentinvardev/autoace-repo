@@ -69,14 +69,30 @@ def clipping(x: np.ndarray, sr: int, ceiling: float = 0.999) -> dict:
     """
     over = np.abs(x) >= ceiling
     runs = [b - a for a, b in true_runs(over)]
-    ge3 = sum(1 for n in runs if n >= 3)
+    qual = [n for n in runs if n >= 3]
     minutes = len(x) / sr / 60
     return {
         "peak": float(np.abs(x).max()) if len(x) else 0.0,
         "clip_max_run": int(max(runs, default=0)),
-        "clip_runs_ge3": int(ge3),
-        "clip_runs_per_min": float(ge3 / minutes) if minutes > 0 else 0.0,
+        "clip_runs_ge3": len(qual),
+        "clip_runs_per_min": float(len(qual) / minutes) if minutes > 0 else 0.0,
+        "clip_frac": float(sum(qual) / max(len(x), 1)),
     }
+
+
+def dropouts(x: np.ndarray, sr: int, speech: list[tuple[float, float]],
+             min_ms: float = 20.0, max_ms: float = 250.0) -> float:
+    """Digital-zero holes inside speech (packet loss), per minute of speech."""
+    if not speech:
+        return 0.0
+    hits, total_s = 0, 0.0
+    for a, b in speech:
+        seg = x[int(a * sr): int(b * sr)]
+        total_s += b - a
+        for s, e in true_runs(np.abs(seg) < 1e-5):
+            if min_ms <= (e - s) / sr * 1000 <= max_ms:
+                hits += 1
+    return hits / max(total_s / 60, 1e-6)
 
 
 def click_times(x: np.ndarray, sr: int, z_thresh: float = 60.0,
@@ -84,7 +100,11 @@ def click_times(x: np.ndarray, sr: int, z_thresh: float = 60.0,
     """Times (s) of impulsive transients via robust z-score of the first
     difference. Sharp static / crackle lives here; steady noise does not."""
     d = np.abs(np.diff(x))
-    z = d / (1.4826 * np.median(d) + EPS)
+    # baseline from non-silent samples only: long digital-zero stretches
+    # (inserted gaps, packet loss) would shrink the MAD and inflate z-scores
+    active = d[np.abs(x[:-1]) > 1e-5]
+    base = np.median(active) if active.size else np.median(d)
+    z = d / (1.4826 * base + EPS)
     idx = np.flatnonzero(z > z_thresh)
     if idx.size == 0:
         return np.empty(0)

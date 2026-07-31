@@ -50,6 +50,8 @@ def extract_features(a: DecodedAudio, use_vad: bool = True) -> Features:
             clicks_pause_rate = len(dsp.gate_times(clicks_all, pauses, inside=True)) / pause_total_min
             hf_pause_rate = len(dsp.gate_times(hf_times, pauses, inside=True)) / pause_total_min
 
+    dropout_rate = dsp.dropouts(a.mono16k, 16000, speech) if speech else 0.0
+
     flatness = None
     if speech:
         seg = np.concatenate([
@@ -76,6 +78,8 @@ def extract_features(a: DecodedAudio, use_vad: bool = True) -> Features:
         clip_runs_ge3=clip["clip_runs_ge3"],
         clip_max_run=clip["clip_max_run"],
         clip_runs_per_min=round(clip["clip_runs_per_min"], 1),
+        clip_frac=round(clip["clip_frac"], 5),
+        dropouts_per_min=round(dropout_rate, 1),
         clicks_per_min_all=round(len(clicks_all) / minutes, 1),
         clicks_per_min_pause=round(clicks_pause_rate, 1),
         hf_bursts_per_min_pause=round(hf_pause_rate, 1),

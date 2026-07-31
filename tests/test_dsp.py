@@ -131,6 +131,22 @@ def test_hf_bursts_detected():
     assert len(times) >= 3
 
 
+# ---------------------------------------------------------------- dropouts
+
+def test_dropouts_recovered():
+    x = speech_like(30, -14) + noise(30, -60)
+    for i in range(20):  # 20 holes of 60 ms in 0.5 min -> 40/min
+        s = int((1 + i * 1.4) * SR)
+        x[s:s + int(0.06 * SR)] = 0.0
+    rate = dsp.dropouts(x, SR, [(0.0, 30.0)])
+    assert 30 <= rate <= 50
+
+
+def test_no_dropouts_on_clean():
+    x = speech_like(30, -14) + noise(30, -60)
+    assert dsp.dropouts(x, SR, [(0.0, 30.0)]) == 0.0
+
+
 # ------------------------------------------------------------ audio quality
 
 def test_quality_clear_on_clean():

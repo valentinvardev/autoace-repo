@@ -57,6 +57,8 @@ class Features(BaseModel):
     clip_runs_ge3: int = 0
     clip_max_run: int = 0
     clip_runs_per_min: float = 0.0
+    clip_frac: float = 0.0            # fraction of samples inside runs >= 3
+    dropouts_per_min: float = 0.0     # 20-200 ms digital-zero holes in speech
 
     # impulses and HF content (static / crackle evidence)
     clicks_per_min_all: float = 0.0
