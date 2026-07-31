@@ -68,7 +68,7 @@ function stripRow(f) {
       ${status}
       ${meter('intensity', INT[r.emotional_intensity] ?? 0, 3)}
       ${meter(noiseLabel, SEV[r.background_noise_severity] ?? 0, 3)}
-      ${meter('quality', QUAL[r.audio_quality] ?? 0, 2)}
+      <span class="tone-chip qual-${r.audio_quality}">${r.audio_quality.replace(/_/g, ' ')}</span>
       <span class="led-group">${led('ovl', r.speaker_overlap_present)}${led('sil', r.long_silence_present)}</span>
       <span class="conf">${(r.confidence ?? 0).toFixed(2)}</span>
     </button>

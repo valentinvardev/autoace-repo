@@ -131,6 +131,9 @@ a { color: var(--blue); }
 .tone-satisfied { color: var(--green); border-color: var(--green); }
 .tone-frustrated { color: var(--amber); border-color: var(--amber); }
 .tone-upset, .tone-distressed { color: var(--red); border-color: var(--red); }
+.qual-clear { color: var(--green); border-color: var(--green); }
+.qual-slightly_impaired { color: var(--amber); border-color: var(--amber); }
+.qual-severely_impaired { color: var(--red); border-color: var(--red); }
 
 .meter { display: flex; flex-direction: column; gap: 3px; }
 .meter .console-label { font-size: 9.5px; }
