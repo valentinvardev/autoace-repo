@@ -16,6 +16,11 @@ dependencies = [
     "silero-vad>=5.1",
     "pyannote.audio>=3.3,<4",
     "huggingface_hub<1.0",
+    # funasr pulls transformers 5.x / new speechbrain, both incompatible
+    # with the huggingface_hub<1.0 pin that pyannote 3.x requires
+    "transformers>=4.50,<5",
+    "speechbrain==1.0.0",
+    "funasr>=1.4",
 ]
 
 [project.optional-dependencies]

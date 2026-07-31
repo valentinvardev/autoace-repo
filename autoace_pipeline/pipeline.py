@@ -94,8 +94,10 @@ def analyze_local(path: str, use_vad: bool = True) -> tuple[Features, LocalDecis
 
 
 # Overlap counts when pyannote finds at least this much simultaneous speech.
-# Calibrated on the labeled calls (overlap: false, true, true).
-OVERLAP_MIN_S = 1.0
+# Calibrated on the labeled calls: the overlap-free call measures exactly 0 s,
+# the two overlap-labeled calls measure 0.88 s and 2.06 s, so 0.5 s separates
+# the classes with margin on both sides (n=3 caveat documented in the memo).
+OVERLAP_MIN_S = 0.5
 
 
 def analyze_full(path: str) -> dict:

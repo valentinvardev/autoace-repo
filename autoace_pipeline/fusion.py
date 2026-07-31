@@ -92,9 +92,17 @@ def fuse(f: Features, local: LocalDecisions, llm: LLMResult,
         trace.noise_rule = "local-only evidence"
         trace.confidence_penalties.append("llm missed measured noise")
     elif llm.background_noise_present and _SEV_ORDER.index(llm_sev) >= 2:
-        # LLM hears interfering noise; trust type, severity from LLM
-        present, severity, ntype = True, llm_sev, llm.background_noise_type
-        trace.noise_rule = "llm >= medium"
+        # LLM hears interfering noise; trust type, severity from LLM — but
+        # "high" claims material impairment, implausible when the measured
+        # pause floor is clean; cap at medium (also damps LLM run variance)
+        severity = llm_sev
+        clean_pauses = f.pause_floor_db is not None and f.pause_floor_db < -55.0
+        if severity == "high" and clean_pauses and f.snr_db > 30:
+            severity = "medium"
+            trace.noise_rule = "llm high capped to medium (clean pauses)"
+        else:
+            trace.noise_rule = "llm >= medium"
+        present, ntype = True, llm.background_noise_type
     elif llm.background_noise_present and corroborated:
         # faint to the LLM but physically corroborated: count it, escalate one step
         present, ntype = True, llm.background_noise_type

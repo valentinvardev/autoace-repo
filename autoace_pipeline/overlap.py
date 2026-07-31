@@ -24,6 +24,14 @@ def _pipeline():
     if not token:
         raise OverlapUnavailable("HF_TOKEN not set")
     try:
+        import torch
+        from torch.torch_version import TorchVersion
+        from pyannote.audio.core.task import Problem, Resolution, Specifications
+        # torch>=2.6 defaults to weights_only unpickling; the segmentation-3.0
+        # lightning checkpoint stores these (harmless) globals
+        torch.serialization.add_safe_globals(
+            [TorchVersion, Specifications, Problem, Resolution])
+
         from pyannote.audio import Model
         from pyannote.audio.pipelines import OverlappedSpeechDetection
         model = Model.from_pretrained("pyannote/segmentation-3.0", use_auth_token=token)
