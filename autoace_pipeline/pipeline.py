@@ -91,3 +91,46 @@ def analyze_local(path: str, use_vad: bool = True) -> tuple[Features, LocalDecis
     audio = load(path)
     feats = extract_features(audio, use_vad=use_vad)
     return feats, decide_local(feats)
+
+
+# Overlap counts when pyannote finds at least this much simultaneous speech.
+# Calibrated on the labeled calls (overlap: false, true, true).
+OVERLAP_MIN_S = 1.0
+
+
+def analyze_full(path: str) -> dict:
+    """Local features + pyannote overlap + Gemini vote, fused to a CallResult.
+
+    Degrades gracefully: if overlap or the LLM is unavailable the result is
+    still produced, with the gap recorded in the fusion trace and confidence.
+    """
+    from .fusion import fuse
+    from .llm import GeminiAnalyzer
+
+    audio = load(path)
+    feats = extract_features(audio, use_vad=True)
+    local = decide_local(feats)
+
+    overlap_present = None
+    overlap_info: dict = {}
+    try:
+        from .overlap import detect_overlap
+        speech_s = feats.speech_frac * feats.duration_s
+        overlap_info = detect_overlap(audio.mono16k, audio.duration_s, speech_s)
+        overlap_present = overlap_info["overlap_total_s"] >= OVERLAP_MIN_S
+        feats.overlap_ratio = overlap_info["overlap_ratio"]
+    except Exception as e:  # noqa: BLE001 - unavailable model must not kill the file
+        overlap_info = {"error": str(e)[:200]}
+
+    llm = GeminiAnalyzer().analyze(path)
+    result, trace = fuse(feats, local, llm, overlap_present,
+                         overlap_info.get("overlap_ratio"))
+
+    return {
+        "result": result,
+        "features": feats,
+        "local": local,
+        "llm": llm,
+        "overlap": overlap_info,
+        "trace": trace,
+    }

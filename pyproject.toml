@@ -10,8 +10,12 @@ dependencies = [
     "pydantic>=2.7",
     "python-dotenv>=1.0",
     "google-genai>=1.0",
-    "torch>=2.2",
+    # pyannote 3.x needs the pre-2.9 torchaudio API and pre-1.0 hf-hub auth kwarg
+    "torch==2.8.*",
+    "torchaudio==2.8.*",
     "silero-vad>=5.1",
+    "pyannote.audio>=3.3,<4",
+    "huggingface_hub<1.0",
 ]
 
 [project.optional-dependencies]
