@@ -26,3 +26,4 @@ out/
 autoace-plan-tecnico.md
 analysis/audit_results.json
 !.env.example
+data/

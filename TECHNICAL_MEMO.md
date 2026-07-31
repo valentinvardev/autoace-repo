@@ -116,6 +116,21 @@ honest statement is leave-one-out behavior: the routing and thresholds were
 chosen from measured evidence, and the emotion boundary cases are exactly
 where more labeled data is needed (next steps).
 
+**On macro F1 for emotional tone.** The evaluation criteria name accuracy and
+macro F1, and macro F1 is the right choice for this problem: it weights every
+tone equally, so a model that always answers `neutral` on a corpus that is
+mostly neutral cannot hide behind a high accuracy while missing every
+escalated caller — which is precisely the case that carries the business
+value. We do not report it here because it is not computable in a meaningful
+way from three calls: the labels cover three of the five classes with exactly
+one example each, so per-class F1 can only come out 0.0 or 1.0 and the average
+of those is noise, not a measurement. The acoustic fields, where the synthetic
+corpus supplies dozens of examples per class, are reported with full confusion
+matrices above; per-class F1 follows directly from them. With a labeled set of
+roughly 200 calls, macro F1 with confidence intervals over grouped
+(per-caller) cross-validation folds is the metric we would report and tune
+against.
+
 **Leakage disclosure:** the synthetic carriers derive from the same three
 calls used for calibration; thresholds fitted on that corpus are therefore
 not fully independent of the calibration audio. Degradations are synthetic
