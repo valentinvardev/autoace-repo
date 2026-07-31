@@ -4,33 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AutoAce Voice Analysis</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <div class="shell">
   <aside class="rail">
     <div class="rail-head">
-      <h1>AutoAce · Voice</h1>
-      <div class="sub">Tone &amp; background-noise analysis</div>
+      <h1>AutoAce Voice Analysis</h1>
+      <div class="sub">Tone &amp; background-noise evaluation</div>
     </div>
     <div class="rail-list" id="batchList"></div>
     <div class="rail-foot">
-      <span class="console-label">Session</span>
+      <span class="label">Session</span>
       <button class="btn" id="logout">Sign out</button>
     </div>
   </aside>
 
   <main class="main">
     <label class="drop" id="drop">
-      <strong>Upload an evaluation batch</strong> — drop a ZIP here or click to browse.
-      <div class="hint">Audio files at the root plus one <code>labels.csv</code> manifest
-      (<code>name,result_json</code>). A file that fails is reported alone; the batch continues.</div>
+      <div id="dropIdle">
+        <strong>Upload an evaluation batch</strong> — drop a ZIP here or click to browse.
+        <div class="hint">Audio files at the root plus one <code>labels.csv</code>
+        manifest (<code>name,result_json</code>). A file that fails is reported
+        alone; the batch keeps going.</div>
+      </div>
+      <div id="dropBusy" class="upload-progress" hidden>
+        <div class="row"><span id="upLabel">Uploading…</span><span id="upPct"></span></div>
+        <div class="bar" id="upBar"><i style="width:0%"></i></div>
+      </div>
       <input type="file" id="fileInput" multiple accept=".zip,.wav,.mp3,.ogg,.flac,.m4a,.csv">
     </label>
-    <section id="batchView"><div class="empty">No batch selected yet.</div></section>
+    <section id="batchView"><div class="empty">No batch selected yet — upload one to begin.</div></section>
   </main>
 </div>
-<div class="toast" id="toast"></div>
-<script src="/static/app.js"></script>
+<div class="toast" id="toast" role="status"></div>
+<script src="/static/app.js?v=4"></script>
 </body>
 </html>

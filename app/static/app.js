@@ -1,19 +1,23 @@
-/* Dashboard logic: upload, poll, render channel-strip rows, download. */
+/* Dashboard: upload with progress, live batch view with FLIP reordering,
+   boot-status banner, unified download menu. Rows are persistent DOM nodes
+   updated in place so reorders can animate. */
 
 const $ = (s, el = document) => el.querySelector(s);
 let currentBatch = null;
 let pollTimer = null;
 const openDetails = new Set();
+const rowCache = new Map(); // file id -> row element
 
-const SEV = { none: 0, low: 1, medium: 2, high: 3 };
-const QUAL = { clear: 0, slightly_impaired: 1, severely_impaired: 2 };
-const INT = { low: 1, medium: 2, high: 3 };
+const STATUS_RANK = { processing: 0, queued: 1, failed: 2, done: 3 };
+const QUAL_TONE = { clear: 'green', slightly_impaired: 'amber', severely_impaired: 'red' };
+const TONE_TONE = { neutral: 'plain', satisfied: 'green', frustrated: 'amber', upset: 'red', distressed: 'red' };
 
 function toast(msg) {
   const t = $('#toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3500);
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 3800);
 }
 
 async function api(path, opts = {}) {
@@ -23,95 +27,176 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
-/* ---------------- rendering ---------------- */
+/* ---------------- row rendering ---------------- */
 
-function meter(label, level, max) {
-  const segs = Array.from({ length: max }, (_, i) =>
-    `<i class="${i < level ? 'on-' + Math.min(level, 3) : ''}"></i>`).join('');
-  return `<div class="meter"><span class="console-label">${label}</span>
-    <span class="segs">${segs}</span></div>`;
+const badge = (text, tone = '', dot = true) =>
+  `<span class="badge ${tone}">${dot ? '<i></i>' : ''}${text}</span>`;
+
+function meterCell(label, level, max) {
+  const dots = Array.from({ length: max }, (_, i) =>
+    `<span class="badge plain" style="padding:2px 6px;border:none;background:none;opacity:${i < level ? 1 : 0.25}">●</span>`).join('');
+  return `<span class="cell-text" title="${label}">${label}</span>`;
 }
 
-function led(label, on) {
-  return `<span class="led"><i class="${on ? 'on' : ''}"></i>${label}</span>`;
-}
-
-function agreementNote(result, expected) {
-  if (!result || !expected) return '';
-  const keys = ['emotional_tone', 'emotional_intensity', 'background_noise_present',
-    'background_noise_severity', 'audio_quality', 'speaker_overlap_present',
-    'long_silence_present'];
-  const diff = keys.filter(k => k in expected && String(result[k]) !== String(expected[k]));
-  if (!diff.length) return '<span class="match">matches provided label</span>';
-  return `<span class="mismatch">differs from label: ${diff.map(k =>
-    `${k.replace(/_/g, ' ')} (${result[k]} vs ${expected[k]})`).join(', ')}</span>`;
-}
-
-function stripRow(f) {
+function rowContent(f) {
   const r = f.result;
-  const status = `<span class="status-tag status-${f.status}">${f.status}</span>`;
+  const status = `<span class="status ${f.status}">${f.status === 'processing'
+    ? '<span class="spinner"></span>' : '<i></i>'}${f.status}</span>`;
   if (!r) {
-    return `<div class="file-row">
-      <button class="strip" data-id="${f.id}">
-        <span class="fname">${f.filename}</span>
-        <span></span>${status}<span></span><span></span><span></span><span></span><span></span>
-      </button>
-      ${f.error ? `<div class="file-error">${f.error}</div>` : ''}
-    </div>`;
-  }
-  const noiseLabel = r.background_noise_present
-    ? (r.background_noise_type || 'noise') : 'no noise';
-  return `<div class="file-row">
-    <button class="strip" data-id="${f.id}" aria-expanded="${openDetails.has(f.id)}">
+    return `<button class="strip" data-id="${f.id}">
       <span class="fname">${f.filename}</span>
-      <span class="tone-chip tone-${r.emotional_tone}">${r.emotional_tone}</span>
+      <span></span><span></span><span></span><span></span><span></span><span></span>
       ${status}
-      ${meter('intensity', INT[r.emotional_intensity] ?? 0, 3)}
-      ${meter(noiseLabel, SEV[r.background_noise_severity] ?? 0, 3)}
-      <span class="tone-chip qual-${r.audio_quality}">${r.audio_quality.replace(/_/g, ' ')}</span>
-      <span class="led-group">${led('ovl', r.speaker_overlap_present)}${led('sil', r.long_silence_present)}</span>
-      <span class="conf">${(r.confidence ?? 0).toFixed(2)}</span>
     </button>
-    <div class="detail" data-detail="${f.id}" hidden></div>
-  </div>`;
+    ${f.error ? `<div class="file-error">${f.error}</div>` : ''}
+    <div class="detail" data-detail="${f.id}" hidden></div>`;
+  }
+  const noise = r.background_noise_present
+    ? badge(`${r.background_noise_type || 'noise'} · ${r.background_noise_severity}`,
+            r.background_noise_severity === 'high' ? 'red'
+            : r.background_noise_severity === 'medium' ? 'amber' : 'plain')
+    : '<span class="cell-text">no noise</span>';
+  const flags = [
+    r.speaker_overlap_present ? badge('overlap', 'blue') : '',
+    r.long_silence_present ? badge('silence', 'blue') : '',
+  ].join('') || '<span class="cell-text">—</span>';
+  return `<button class="strip" data-id="${f.id}" aria-expanded="${openDetails.has(f.id)}">
+    <span class="fname">${f.filename}</span>
+    ${badge(r.emotional_tone, TONE_TONE[r.emotional_tone] || 'plain')}
+    <span class="cell-text">${r.emotional_intensity}</span>
+    ${noise}
+    ${badge(r.audio_quality.replace(/_/g, ' '), QUAL_TONE[r.audio_quality] || 'plain')}
+    <span class="flags">${flags}</span>
+    <span class="conf">${(r.confidence ?? 0).toFixed(2)}</span>
+    ${status}
+  </button>
+  <div class="detail" data-detail="${f.id}" hidden></div>`;
 }
 
-function renderBatch(b) {
-  const total = b.total || b.files.length || 1;
-  const segments = b.files.map(f =>
-    `<span class="${f.status === 'done' ? 'done' : f.status === 'failed' ? 'failed'
-      : f.status === 'processing' ? 'processing' : ''}"></span>`).join('');
-  const doneCount = (b.counts.done || 0) + (b.counts.failed || 0);
-  const cost = b.files.reduce((s, f) => s + (f.cost_usd || 0), 0);
-  const dur = b.files.reduce((s, f) => s + (f.duration_s || 0), 0);
-  const costPerMin = dur > 0 ? (cost / (dur / 60)) : 0;
+function ensureRow(f) {
+  let row = rowCache.get(f.id);
+  const signature = JSON.stringify([f.status, f.result, f.error]);
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'file-row';
+    row.dataset.fid = f.id;
+    rowCache.set(f.id, row);
+  }
+  if (row._sig !== signature) {
+    row._sig = signature;
+    row.innerHTML = rowContent(f);
+    row.querySelector('.strip').addEventListener('click', () => toggleDetail(f.id));
+    if (openDetails.has(f.id)) loadDetail(f.id, row.querySelector(`[data-detail="${f.id}"]`));
+  }
+  return row;
+}
 
-  $('#batchView').innerHTML = `
+/* FLIP: capture positions, reorder DOM, animate the delta. */
+function reorderRows(container, orderedRows) {
+  const before = new Map();
+  orderedRows.forEach(el => { if (el.parentNode) before.set(el, el.getBoundingClientRect().top); });
+  orderedRows.forEach(el => container.appendChild(el));
+  orderedRows.forEach(el => {
+    const prev = before.get(el);
+    if (prev == null) return;
+    const dy = prev - el.getBoundingClientRect().top;
+    if (Math.abs(dy) > 2) {
+      el.animate(
+        [{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
+        { duration: 320, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' });
+    }
+  });
+}
+
+/* ---------------- batch view ---------------- */
+
+function batchShell(b) {
+  return `
     <div class="batch-head">
       <h2>${b.name}</h2>
-      <span class="console-label">${doneCount}/${total} processed</span>
+      <span class="label" id="bCount"></span>
       <span class="spacer"></span>
-      <button class="btn" id="dlCsv">Download CSV</button>
-      <button class="btn" id="dlJson">Download JSON</button>
+      <div class="menu-wrap">
+        <button class="btn" id="dlBtn" aria-haspopup="menu">Download
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 3.5 5 7.5 9 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <div class="menu" id="dlMenu" role="menu">
+          <button data-fmt="csv" role="menuitem">CSV<span>name,result_json — same shape as the manifest</span></button>
+          <button data-fmt="json" role="menuitem">JSON<span>full results with per-file status</span></button>
+        </div>
+      </div>
     </div>
-    <div class="progress-meter">${segments}</div>
-    <div class="batch-meta">
-      ${b.counts.failed ? `${b.counts.failed} failed · ` : ''}
-      ${dur ? `${(dur / 60).toFixed(1)} min of audio · API cost $${cost.toFixed(4)}
-        ($${costPerMin.toFixed(4)}/min)` : ''}
-    </div>
-    ${b.warnings.length ? `<ul class="warnings">${b.warnings.map(w => `<li>${w}</li>`).join('')}</ul>` : ''}
-    <div class="files">${b.files.map(stripRow).join('')}</div>`;
-
-  $('#dlCsv').onclick = () => location.href = `/api/batches/${b.id}/download.csv`;
-  $('#dlJson').onclick = () => location.href = `/api/batches/${b.id}/download.json`;
-  document.querySelectorAll('.strip').forEach(el =>
-    el.addEventListener('click', () => toggleDetail(+el.dataset.id)));
-  openDetails.forEach(id => { const el = $(`[data-detail="${id}"]`); if (el) loadDetail(id, el); });
+    <div class="batch-meta" id="bMeta"></div>
+    <div class="banner" id="bBanner" hidden></div>
+    <ul class="warnings" id="bWarnings"></ul>
+    <div class="files">
+      <div class="thead">
+        <span class="label">File</span><span class="label">Tone</span>
+        <span class="label">Intensity</span><span class="label">Noise</span>
+        <span class="label">Quality</span><span class="label">Flags</span>
+        <span class="label">Conf</span><span class="label">Status</span>
+      </div>
+      <div id="rows"></div>
+    </div>`;
 }
 
+function updateBatchView(b) {
+  const view = $('#batchView');
+  if (view.dataset.batch !== b.id) {
+    view.dataset.batch = b.id;
+    rowCache.clear();
+    view.innerHTML = batchShell(b);
+    const btn = $('#dlBtn'), menu = $('#dlMenu');
+    btn.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', () => menu.classList.remove('open'));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.classList.remove('open'); });
+    menu.querySelectorAll('button').forEach(mi => mi.addEventListener('click', () =>
+      location.href = `/api/batches/${b.id}/download.${mi.dataset.fmt}`));
+  }
+
+  const done = (b.counts.done || 0), failed = (b.counts.failed || 0);
+  const processed = done + failed;
+  $('#bCount').textContent = `${processed}/${b.total} processed`;
+
+  const cost = b.files.reduce((s, f) => s + (f.cost_usd || 0), 0);
+  const dur = b.files.reduce((s, f) => s + (f.duration_s || 0), 0);
+  $('#bMeta').textContent = [
+    failed ? `${failed} failed` : '',
+    dur ? `${(dur / 60).toFixed(1)} min of audio` : '',
+    cost ? `API cost $${cost.toFixed(4)} ($${(cost / (dur / 60)).toFixed(4)}/min)` : '',
+  ].filter(Boolean).join(' · ');
+
+  const banner = $('#bBanner');
+  const processing = b.files.filter(f => f.status === 'processing').map(f => f.filename);
+  const queued = (b.counts.queued || 0);
+  if (!b.worker_ready && (queued || processing.length)) {
+    banner.hidden = false;
+    banner.className = 'banner info';
+    banner.innerHTML = `<span class="spinner"></span>
+      Warming up the analysis engine — three audio models are loading (~1 min).
+      This happens once per deployment; your files start right after.`;
+  } else if (processing.length) {
+    banner.hidden = false;
+    banner.className = 'banner';
+    banner.innerHTML = `<span class="spinner"></span>
+      Analyzing <b style="font-family:var(--mono);font-size:12.5px">&nbsp;${processing.join(', ')}&nbsp;</b>
+      · ${queued} queued · results appear as each file finishes.`;
+  } else {
+    banner.hidden = true;
+  }
+
+  $('#bWarnings').innerHTML = (b.warnings || []).map(w => `<li>${w}</li>`).join('');
+
+  const ordered = [...b.files].sort((a, z) =>
+    (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[z.status] ?? 9)
+    || a.filename.localeCompare(z.filename));
+  reorderRows($('#rows'), ordered.map(ensureRow));
+}
+
+/* ---------------- detail ---------------- */
+
 async function toggleDetail(id) {
-  const el = $(`[data-detail="${id}"]`);
+  const el = document.querySelector(`[data-detail="${id}"]`);
   if (!el) return;
   if (openDetails.has(id)) { openDetails.delete(id); el.hidden = true; return; }
   openDetails.add(id);
@@ -120,7 +205,7 @@ async function toggleDetail(id) {
 
 async function loadDetail(id, el) {
   el.hidden = false;
-  el.innerHTML = '<span class="console-label">loading…</span>';
+  el.innerHTML = '<div style="padding:12px 0"><span class="spinner"></span></div>';
   try {
     const f = await api(`/api/files/${id}`);
     const ft = f.detail?.features || {};
@@ -156,10 +241,20 @@ async function loadDetail(id, el) {
   }
 }
 
+function agreementNote(result, expected) {
+  if (!result || !expected) return '';
+  const keys = ['emotional_tone', 'emotional_intensity', 'background_noise_present',
+    'background_noise_severity', 'audio_quality', 'speaker_overlap_present',
+    'long_silence_present'];
+  const diff = keys.filter(k => k in expected && String(result[k]) !== String(expected[k]));
+  if (!diff.length) return '<span class="match">matches provided label</span>';
+  return `<span class="mismatch">differs from label: ${diff.map(k =>
+    `${k.replace(/_/g, ' ')} (${result[k]} vs ${expected[k]})`).join(', ')}</span>`;
+}
+
 /* ---------------- batches list + polling ---------------- */
 
-async function refreshList(selectId) {
-  const items = await api('/api/batches');
+function renderList(items) {
   $('#batchList').innerHTML = items.map(b => {
     const done = (b.counts.done || 0) + (b.counts.failed || 0);
     return `<button class="batch-item ${b.id === currentBatch ? 'active' : ''}" data-id="${b.id}">
@@ -169,6 +264,10 @@ async function refreshList(selectId) {
   }).join('') || '<div class="empty">No batches yet.</div>';
   document.querySelectorAll('.batch-item').forEach(el =>
     el.addEventListener('click', () => selectBatch(el.dataset.id)));
+}
+
+async function refreshList(selectId) {
+  renderList(await api('/api/batches'));
   if (selectId) selectBatch(selectId);
 }
 
@@ -183,38 +282,66 @@ async function pollBatch() {
   clearTimeout(pollTimer);
   if (!currentBatch) return;
   const b = await api(`/api/batches/${currentBatch}`);
-  renderBatch(b);
+  updateBatchView(b);
   if (b.status !== 'done') pollTimer = setTimeout(pollBatch, 2000);
-  else refreshListQuiet();
+  else renderList(await api('/api/batches'));
 }
 
-async function refreshListQuiet() {
-  const active = currentBatch;
-  const items = await api('/api/batches');
-  $('#batchList').innerHTML = items.map(b => {
-    const done = (b.counts.done || 0) + (b.counts.failed || 0);
-    return `<button class="batch-item ${b.id === active ? 'active' : ''}" data-id="${b.id}">
-      <div class="b-name">${b.name}</div>
-      <div class="b-meta">${done}/${b.total} · ${b.status}${b.counts.failed ? ` · ${b.counts.failed} failed` : ''}</div>
-    </button>`;
-  }).join('');
-  document.querySelectorAll('.batch-item').forEach(el =>
-    el.addEventListener('click', () => selectBatch(el.dataset.id)));
-}
+/* ---------------- upload with progress ---------------- */
 
-/* ---------------- upload ---------------- */
+function uploadXHR(fd) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/batches');
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round(100 * e.loaded / e.total);
+      $('#upPct').textContent = pct + '%';
+      $('#upBar').classList.remove('indeterminate');
+      $('#upBar').firstElementChild.style.width = pct + '%';
+      if (pct >= 100) {
+        $('#upLabel').textContent = 'Validating batch — checking the manifest against the audio files…';
+        $('#upPct').textContent = '';
+        $('#upBar').classList.add('indeterminate');
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status === 401) { location.href = '/login'; return; }
+      try {
+        const body = JSON.parse(xhr.responseText || '{}');
+        xhr.status < 300 ? resolve(body) : reject(new Error(body.detail || xhr.statusText));
+      } catch { reject(new Error(xhr.statusText)); }
+    };
+    xhr.onerror = () => reject(new Error('network error'));
+    xhr.send(fd);
+  });
+}
 
 async function upload(files) {
+  const drop = $('#drop');
+  if (drop.classList.contains('busy')) return;
+  drop.classList.add('busy');
+  $('#dropIdle').hidden = true;
+  $('#dropBusy').hidden = false;
+  $('#upLabel').textContent = `Uploading ${files.length} file${files.length > 1 ? 's' : ''}…`;
+  $('#upBar').firstElementChild.style.width = '0%';
+
   const fd = new FormData();
   [...files].forEach(f => fd.append('files', f));
-  fd.append('name', files.length === 1 ? files[0].name.replace(/\.zip$/i, '') : `batch ${new Date().toLocaleTimeString()}`);
-  toast(`Uploading ${files.length} file(s)…`);
+  fd.append('name', files.length === 1
+    ? files[0].name.replace(/\.zip$/i, '')
+    : `batch ${new Date().toLocaleTimeString()}`);
   try {
-    const r = await api('/api/batches', { method: 'POST', body: fd });
-    toast('Batch created — processing.');
+    const r = await uploadXHR(fd);
+    toast('Batch created — analysis starts now.');
     await refreshList(r.batch_id);
   } catch (e) {
     toast(`Upload failed: ${e.message}`);
+  } finally {
+    drop.classList.remove('busy');
+    $('#dropIdle').hidden = false;
+    $('#dropBusy').hidden = true;
+    $('#fileInput').value = '';
   }
 }
 

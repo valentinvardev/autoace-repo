@@ -26,6 +26,13 @@ from . import db
 
 _q: "queue.Queue[tuple[str, int, str]]" = queue.Queue()
 _started = False
+_ready = False
+
+
+def is_ready() -> bool:
+    """False while models are still pre-warming (first boot takes ~1 min);
+    the dashboard uses this to explain the wait instead of looking stuck."""
+    return _ready
 
 AUDIO_EXT = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".opus", ".webm", ".aiff"}
 
@@ -128,7 +135,9 @@ def start(workers: int = 1) -> None:
     _started = True
 
     def _boot() -> None:
+        global _ready
         _prewarm()
+        _ready = True
         _recover_orphans()
         for i in range(workers):
             threading.Thread(target=_loop, daemon=True, name=f"worker-{i}").start()

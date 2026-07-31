@@ -127,7 +127,7 @@ def get_batch(batch_id: str, user: str = Depends(require_auth)):
         f["result"] = json.loads(f["result_json"]) if f["result_json"] else None
         f["expected"] = json.loads(f["expected_json"]) if f["expected_json"] else None
         del f["result_json"], f["expected_json"]
-    return {**b, "files": files}
+    return {**b, "files": files, "worker_ready": worker.is_ready()}
 
 
 @app.get("/api/files/{file_id}")

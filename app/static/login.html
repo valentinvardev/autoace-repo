@@ -4,19 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — AutoAce Voice Analysis</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <div class="login-wrap">
   <form class="login-card" id="form">
-    <h1>AutoAce · Voice Analysis</h1>
+    <h1>AutoAce Voice Analysis</h1>
     <p class="sub">Emotional tone &amp; background noise — technical trial</p>
     <div class="field">
-      <label class="console-label" for="u">Username</label>
+      <label for="u">Username</label>
       <input id="u" autocomplete="username" required>
     </div>
     <div class="field">
-      <label class="console-label" for="p">Password</label>
+      <label for="p">Password</label>
       <input id="p" type="password" autocomplete="current-password" required>
     </div>
     <button class="btn btn-primary btn-full" type="submit">Sign in</button>
