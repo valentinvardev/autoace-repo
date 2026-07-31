@@ -15,15 +15,21 @@ COPY app ./app
 RUN pip install --no-cache-dir .
 
 # Bake the public models into the image so cold starts don't re-download
-# ~1 GB. pyannote weights are gated and small; they fetch at runtime using
-# HF_TOKEN and land in HF_HOME.
+# ~1 GB (build with --build-arg SKIP_BAKE=1 to skip and let them download at
+# first boot into HF_HOME instead — point HF_HOME at a persistent volume
+# then). pyannote weights are gated and small; they always fetch at runtime
+# using HF_TOKEN.
+ARG SKIP_BAKE=0
 ENV HF_HOME=/models/hf TORCH_HOME=/models/torch
-RUN python -c "from silero_vad import load_silero_vad; load_silero_vad()" \
-    && python -c "from funasr import AutoModel; AutoModel(model='FunAudioLLM/SenseVoiceSmall', hub='hf', disable_update=True, device='cpu')" \
-    || true
+RUN if [ "$SKIP_BAKE" != "1" ]; then \
+      python -c "from silero_vad import load_silero_vad; load_silero_vad()" \
+      && python -c "from funasr import AutoModel; AutoModel(model='FunAudioLLM/SenseVoiceSmall', hub='hf', disable_update=True, device='cpu')" \
+      || true; \
+    fi
 
+# Runtime state (uploads + results DB). On Railway, attach a Volume mounted
+# at /data instead of a Docker VOLUME declaration (unsupported there).
 ENV DATA_DIR=/data
-VOLUME ["/data"]
 
 EXPOSE 8000
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
