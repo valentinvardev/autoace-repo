@@ -1,0 +1,11 @@
+.git
+.env*
+resources/
+out/
+data/
+analysis/
+tests/
+__pycache__/
+*.pyc
+*.md
+*.pdf

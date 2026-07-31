@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — AutoAce Voice Analysis</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <form class="login-card" id="form">
+    <h1>AutoAce · Voice Analysis</h1>
+    <p class="sub">Emotional tone &amp; background noise — technical trial</p>
+    <div class="field">
+      <label class="console-label" for="u">Username</label>
+      <input id="u" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label class="console-label" for="p">Password</label>
+      <input id="p" type="password" autocomplete="current-password" required>
+    </div>
+    <button class="btn btn-primary btn-full" type="submit">Sign in</button>
+    <p class="login-error" id="err"></p>
+  </form>
+</div>
+<script>
+document.getElementById('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err');
+  err.textContent = '';
+  const r = await fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      username: document.getElementById('u').value,
+      password: document.getElementById('p').value,
+    }),
+  });
+  if (r.ok) { location.href = '/'; }
+  else { err.textContent = 'Invalid username or password.'; }
+});
+</script>
+</body>
+</html>

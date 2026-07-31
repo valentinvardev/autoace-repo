@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoAce Voice Analysis</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-head">
+      <h1>AutoAce · Voice</h1>
+      <div class="sub">Tone &amp; background-noise analysis</div>
+    </div>
+    <div class="rail-list" id="batchList"></div>
+    <div class="rail-foot">
+      <span class="console-label">Session</span>
+      <button class="btn" id="logout">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <label class="drop" id="drop">
+      <strong>Upload an evaluation batch</strong> — drop a ZIP here or click to browse.
+      <div class="hint">Audio files at the root plus one <code>labels.csv</code> manifest
+      (<code>name,result_json</code>). A file that fails is reported alone; the batch continues.</div>
+      <input type="file" id="fileInput" multiple accept=".zip,.wav,.mp3,.ogg,.flac,.m4a,.csv">
+    </label>
+    <section id="batchView"><div class="empty">No batch selected yet.</div></section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
