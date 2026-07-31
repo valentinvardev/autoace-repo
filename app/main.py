@@ -27,7 +27,40 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer  # noqa: E402
 
 from . import batches, db, worker  # noqa: E402
 
-SECRET = os.environ.get("SESSION_SECRET") or secrets.token_hex(32)
+def _session_secret() -> str:
+    """A secret that survives restarts.
+
+    Generating one per process signs every deploy's cookies with a different
+    key, so users are silently logged out on each restart (and randomly, if
+    more than one replica serves traffic). SESSION_SECRET is the correct
+    answer; falling back to a file under DATA_DIR keeps sessions alive when
+    it is unset, provided the data volume is persistent and shared.
+    """
+    if env := os.environ.get("SESSION_SECRET"):
+        return env
+    path = Path(os.environ.get("DATA_DIR", "data")) / ".session_secret"
+    try:
+        if path.exists():
+            return path.read_text().strip()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        value = secrets.token_hex(32)
+        path.write_text(value)
+        print("[auth] SESSION_SECRET unset; persisted a generated secret to "
+              f"{path}. Set SESSION_SECRET to survive volume loss and to keep "
+              "sessions valid across replicas.", flush=True)
+        return value
+    except OSError as e:
+        print(f"[auth] WARNING: cannot persist a session secret ({e}); "
+              "sessions will not survive a restart.", flush=True)
+        return secrets.token_hex(32)
+
+
+def _flag(name: str) -> bool:
+    """Env flags: only 1/true/yes enable. bool('0') is True in Python."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+SECRET = _session_secret()
 USERNAME = os.environ.get("DASH_USERNAME", "autoace")
 PASSWORD = os.environ.get("DASH_PASSWORD", "")
 SESSION_HOURS = 24 * 7
@@ -72,7 +105,7 @@ async def login(request: Request):
     resp = JSONResponse({"ok": True})
     resp.set_cookie("session", signer.dumps({"u": USERNAME}), httponly=True,
                     samesite="lax", max_age=SESSION_HOURS * 3600,
-                    secure=bool(os.environ.get("COOKIE_SECURE")))
+                    secure=_flag("COOKIE_SECURE"))
     return resp
 
 
