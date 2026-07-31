@@ -1,0 +1,28 @@
+[project]
+name = "autoace-audio-trial"
+version = "0.1.0"
+description = "Voice tone and background noise analysis for production call audio"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "soundfile>=0.13",
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+    "google-genai>=1.0",
+    "torch>=2.2",
+    "silero-vad>=5.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["autoace_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
