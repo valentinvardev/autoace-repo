@@ -35,6 +35,8 @@ def run_full(args) -> None:
         print(f"  {'llm_cost_usd':>26}: {r['llm'].cost_usd} ({r['llm'].model})")
         print(f"  {'tone_evidence':>26}: {r['llm'].tone_evidence}")
         print(f"  {'noise_evidence':>26}: {r['llm'].noise_evidence}\n")
+        if r["trace"].ser_notes:
+            print(f"  {'ser_notes':>26}: {r['trace'].ser_notes}")
         out.append({
             "file": Path(fp).name,
             "result": r["result"].model_dump(),
@@ -42,6 +44,7 @@ def run_full(args) -> None:
             "local": vars(r["local"]),
             "llm": vars(r["llm"]),
             "overlap": r["overlap"],
+            "ser": {k: v for k, v in (r["ser"] or {}).items() if k != "segments"},
             "trace": vars(r["trace"]),
             "wall_s": round(dt, 2),
         })

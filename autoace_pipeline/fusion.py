@@ -23,6 +23,38 @@ from .schema import CallResult, Features, Severity
 
 _SEV_ORDER = ["none", "low", "medium", "high"]
 
+# SER fractions are diluted by agent speech (~half of all speech, reliably
+# neutral synthetic voice), so sustained customer emotion appears at roughly
+# half its true fraction. Thresholds are set accordingly and re-examined
+# against the labeled calls.
+SER_SUSTAINED_NEG = 0.25   # enough sustained anger to escalate frustrated -> upset
+SER_SUSTAINED_POS = 0.15   # enough sustained positivity for neutral -> satisfied
+SER_FLASH_NEG = 0.08       # below this, LLM-heard anger was a brief flash
+
+
+def adjust_emotion(tone: str, intensity: str, ser: dict) -> tuple[str, str, list[str]]:
+    """Move the LLM's tone at most one step when SER's temporal evidence
+    clearly supports it. Returns (tone, intensity, notes)."""
+    from .ser import negative_fraction, positive_fraction
+
+    notes: list[str] = []
+    neg, pos = negative_fraction(ser["fractions"]), positive_fraction(ser["fractions"])
+
+    if tone == "frustrated" and neg >= SER_SUSTAINED_NEG:
+        tone, intensity = "upset", ("high" if intensity == "medium" else intensity)
+        notes.append(f"ser sustained anger {neg:.2f} escalated frustrated->upset")
+    elif tone == "neutral" and pos >= SER_SUSTAINED_POS:
+        tone = "satisfied"
+        if intensity == "low":
+            intensity = "medium"
+        notes.append(f"ser sustained positivity {pos:.2f} lifted neutral->satisfied")
+    elif tone == "upset" and neg <= SER_FLASH_NEG:
+        # never demote `distressed`: a crying caller can read neutral to SER,
+        # and missing escalation is the costliest production error
+        tone = "frustrated"
+        notes.append(f"ser anger fraction {neg:.2f}: brief flash, demoted to frustrated")
+    return tone, intensity, notes
+
 
 def _bump(sev: Severity) -> Severity:
     i = min(_SEV_ORDER.index(sev) + 1, len(_SEV_ORDER) - 1)
@@ -37,11 +69,18 @@ class FusionTrace:
     silence_disagreement: bool = False
     overlap_source: str = ""
     confidence_penalties: list[str] = None  # type: ignore[assignment]
+    ser_notes: list[str] = None  # type: ignore[assignment]
 
 
 def fuse(f: Features, local: LocalDecisions, llm: LLMResult,
-         overlap_present: bool | None, overlap_ratio: float | None) -> tuple[CallResult, FusionTrace]:
+         overlap_present: bool | None, overlap_ratio: float | None,
+         ser: dict | None = None) -> tuple[CallResult, FusionTrace]:
     trace = FusionTrace(confidence_penalties=[])
+
+    tone, intensity = llm.emotional_tone, llm.emotional_intensity
+    if ser:
+        tone, intensity, ser_notes = adjust_emotion(tone, intensity, ser)
+        trace.ser_notes = ser_notes
 
     # --- background noise ---
     corroborated = local.noise_present_local or local.static_suspected
@@ -99,8 +138,8 @@ def fuse(f: Features, local: LocalDecisions, llm: LLMResult,
     conf = round(min(max(conf, 0.3), 0.95), 2)
 
     result = CallResult(
-        emotional_tone=llm.emotional_tone,
-        emotional_intensity=llm.emotional_intensity,
+        emotional_tone=tone,
+        emotional_intensity=intensity,
         background_noise_present=present,
         background_noise_type=ntype if present else "",
         background_noise_severity=severity if present else "none",

@@ -122,9 +122,18 @@ def analyze_full(path: str) -> dict:
     except Exception as e:  # noqa: BLE001 - unavailable model must not kill the file
         overlap_info = {"error": str(e)[:200]}
 
+    ser_info = None
+    try:
+        from . import ser, vad
+        spans = vad.speech_spans(audio.mono16k, audio.duration_s)
+        ser_info = ser.analyze_segments(audio.mono16k, spans)
+    except Exception as e:  # noqa: BLE001
+        ser_info = None
+        overlap_info.setdefault("ser_error", str(e)[:200])
+
     llm = GeminiAnalyzer().analyze(path)
     result, trace = fuse(feats, local, llm, overlap_present,
-                         overlap_info.get("overlap_ratio"))
+                         overlap_info.get("overlap_ratio"), ser=ser_info)
 
     return {
         "result": result,
@@ -132,5 +141,6 @@ def analyze_full(path: str) -> dict:
         "local": local,
         "llm": llm,
         "overlap": overlap_info,
+        "ser": ser_info,
         "trace": trace,
     }
