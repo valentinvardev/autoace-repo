@@ -9,9 +9,13 @@ stays fully local.
 from __future__ import annotations
 
 import os
+import threading
 from functools import lru_cache
 
 import numpy as np
+
+# The pipeline object is a shared singleton and is not thread-safe.
+_lock = threading.Lock()
 
 
 class OverlapUnavailable(Exception):
@@ -49,7 +53,8 @@ def detect_overlap(mono16k: np.ndarray, duration_s: float,
 
     pipe = _pipeline()
     wave = torch.from_numpy(np.ascontiguousarray(mono16k)).unsqueeze(0)
-    ann = pipe({"waveform": wave, "sample_rate": 16000})
+    with _lock:
+        ann = pipe({"waveform": wave, "sample_rate": 16000})
     spans = [(float(s.start), float(s.end)) for s in ann.get_timeline().support()]
     total = sum(e - s for s, e in spans)
     base = speech_total_s if speech_total_s and speech_total_s > 0 else duration_s

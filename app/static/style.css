@@ -206,9 +206,10 @@ a { color: var(--blue); text-decoration: none; }
 }
 .strip:hover { background: var(--bg); }
 .strip .fname {
-  font-family: var(--mono); font-size: 12.5px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: center; font-family: var(--mono); font-size: 12.5px;
+  overflow: hidden; white-space: nowrap;
 }
+.strip .fname span { overflow: hidden; text-overflow: ellipsis; }
 
 .badge {
   display: inline-flex; align-items: center; gap: 6px; justify-self: start;
@@ -230,8 +231,28 @@ a { color: var(--blue); text-decoration: none; }
   padding: 0 16px 12px; color: var(--red); font-size: 13px; font-family: var(--mono);
 }
 
-/* ---------------- detail ---------------- */
-.detail { padding: 4px 16px 18px; background: var(--bg); border-top: 1px solid var(--border); }
+/* ---------------- detail ----------------
+   Collapsible via grid-template-rows 0fr -> 1fr: animates to the content's
+   natural height without measuring it, so async-loaded detail still slides
+   smoothly. Padding and border live on the inner element, otherwise they
+   stay visible at zero height. */
+.detail-wrap {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s var(--ease);
+}
+.detail-wrap.open { grid-template-rows: 1fr; }
+.detail-inner { overflow: hidden; min-height: 0; }
+.detail-body {
+  padding: 6px 16px 18px; background: var(--bg); border-top: 1px solid var(--border);
+  opacity: 0; transition: opacity 0.22s var(--ease) 0.06s;
+}
+.detail-wrap.open .detail-body { opacity: 1; }
+
+.chev {
+  display: inline-block; width: 9px; margin-right: 7px; color: var(--faint);
+  transition: transform 0.3s var(--ease); flex: none;
+}
+.strip[aria-expanded="true"] .chev { transform: rotate(90deg); }
 .detail-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px 20px; margin: 14px 0;

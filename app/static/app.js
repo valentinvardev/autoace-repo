@@ -38,18 +38,26 @@ function meterCell(label, level, max) {
   return `<span class="cell-text" title="${label}">${label}</span>`;
 }
 
+const CHEV = '<svg class="chev" width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M3.5 1 7.5 5 3.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const detailSlot = (id, open) =>
+  `<div class="detail-wrap${open ? ' open' : ''}" data-detail="${id}">
+     <div class="detail-inner"></div>
+   </div>`;
+
 function rowContent(f) {
   const r = f.result;
+  const open = openDetails.has(f.id);
   const status = `<span class="status ${f.status}">${f.status === 'processing'
     ? '<span class="spinner"></span>' : '<i></i>'}${f.status}</span>`;
   if (!r) {
-    return `<button class="strip" data-id="${f.id}">
-      <span class="fname">${f.filename}</span>
+    return `<button class="strip" data-id="${f.id}" aria-expanded="${open}">
+      <span class="fname">${CHEV}<span>${f.filename}</span></span>
       <span></span><span></span><span></span><span></span><span></span><span></span>
       ${status}
     </button>
     ${f.error ? `<div class="file-error">${f.error}</div>` : ''}
-    <div class="detail" data-detail="${f.id}" hidden></div>`;
+    ${detailSlot(f.id, open)}`;
   }
   const noise = r.background_noise_present
     ? badge(`${r.background_noise_type || 'noise'} · ${r.background_noise_severity}`,
@@ -60,8 +68,8 @@ function rowContent(f) {
     r.speaker_overlap_present ? badge('overlap', 'blue') : '',
     r.long_silence_present ? badge('silence', 'blue') : '',
   ].join('') || '<span class="cell-text">—</span>';
-  return `<button class="strip" data-id="${f.id}" aria-expanded="${openDetails.has(f.id)}">
-    <span class="fname">${f.filename}</span>
+  return `<button class="strip" data-id="${f.id}" aria-expanded="${open}">
+    <span class="fname">${CHEV}<span>${f.filename}</span></span>
     ${badge(r.emotional_tone, TONE_TONE[r.emotional_tone] || 'plain')}
     <span class="cell-text">${r.emotional_intensity}</span>
     ${noise}
@@ -70,7 +78,7 @@ function rowContent(f) {
     <span class="conf">${(r.confidence ?? 0).toFixed(2)}</span>
     ${status}
   </button>
-  <div class="detail" data-detail="${f.id}" hidden></div>`;
+  ${detailSlot(f.id, open)}`;
 }
 
 function ensureRow(f) {
@@ -86,7 +94,9 @@ function ensureRow(f) {
     row._sig = signature;
     row.innerHTML = rowContent(f);
     row.querySelector('.strip').addEventListener('click', () => toggleDetail(f.id));
-    if (openDetails.has(f.id)) loadDetail(f.id, row.querySelector(`[data-detail="${f.id}"]`));
+    if (openDetails.has(f.id)) {
+      loadDetail(f.id, row.querySelector(`[data-detail="${f.id}"] .detail-inner`));
+    }
   }
   return row;
 }
@@ -196,16 +206,24 @@ function updateBatchView(b) {
 /* ---------------- detail ---------------- */
 
 async function toggleDetail(id) {
-  const el = document.querySelector(`[data-detail="${id}"]`);
-  if (!el) return;
-  if (openDetails.has(id)) { openDetails.delete(id); el.hidden = true; return; }
+  const wrap = document.querySelector(`[data-detail="${id}"]`);
+  if (!wrap) return;
+  const strip = wrap.parentNode.querySelector('.strip');
+  if (openDetails.has(id)) {
+    openDetails.delete(id);
+    wrap.classList.remove('open');
+    strip.setAttribute('aria-expanded', 'false');
+    return;
+  }
   openDetails.add(id);
-  await loadDetail(id, el);
+  wrap.classList.add('open');
+  strip.setAttribute('aria-expanded', 'true');
+  await loadDetail(id, wrap.firstElementChild);
 }
 
 async function loadDetail(id, el) {
-  el.hidden = false;
-  el.innerHTML = '<div style="padding:12px 0"><span class="spinner"></span></div>';
+  if (!el) return;
+  el.innerHTML = '<div class="detail-body"><span class="spinner"></span></div>';
   try {
     const f = await api(`/api/files/${id}`);
     const ft = f.detail?.features || {};
@@ -213,6 +231,7 @@ async function loadDetail(id, el) {
     const trace = f.detail?.trace || {};
     const kv = (label, v) => `<div class="kv"><b>${label}</b>${v ?? '—'}</div>`;
     el.innerHTML = `
+      <div class="detail-body">
       <div class="detail-grid">
         ${kv('duration', ft.duration_s + ' s')}
         ${kv('snr', ft.snr_db + ' dB')}
@@ -235,9 +254,9 @@ async function loadDetail(id, el) {
         ${trace.noise_rule ? `<p><b>Noise decision:</b> ${trace.noise_rule}</p>` : ''}
         ${(trace.ser_notes || []).map(n => `<p><b>SER:</b> ${n}</p>`).join('')}
         ${f.expected ? `<p>${agreementNote(f.result, f.expected)}</p>` : ''}
-      </div>`;
+      </div></div>`;
   } catch (e) {
-    el.innerHTML = `<span class="mismatch">could not load detail: ${e.message}</span>`;
+    el.innerHTML = `<div class="detail-body"><span class="mismatch">could not load detail: ${e.message}</span></div>`;
   }
 }
 

@@ -6,9 +6,17 @@ test suite for the deterministic features runs in milliseconds.
 
 from __future__ import annotations
 
+import threading
 from functools import lru_cache
 
 import numpy as np
+
+# Silero VAD is a TorchScript module carrying RNN state between calls. The
+# model is a process-wide singleton, so two workers calling it at once
+# corrupt that state and abort the interpreter. Inference is serialized;
+# it is CPU-bound anyway, and the slow part of a file (the LLM wait) stays
+# concurrent across workers.
+_lock = threading.Lock()
 
 
 @lru_cache(maxsize=1)
@@ -22,12 +30,15 @@ def speech_spans(mono16k: np.ndarray, duration_s: float) -> list[tuple[float, fl
     import torch
     from silero_vad import get_speech_timestamps
 
-    ts = get_speech_timestamps(
-        torch.from_numpy(np.ascontiguousarray(mono16k)),
-        _model(),
-        sampling_rate=16000,
-        return_seconds=True,
-    )
+    model = _model()
+    with _lock:
+        model.reset_states()  # never inherit the previous file's state
+        ts = get_speech_timestamps(
+            torch.from_numpy(np.ascontiguousarray(mono16k)),
+            model,
+            sampling_rate=16000,
+            return_seconds=True,
+        )
     return [(float(t["start"]), float(t["end"])) for t in ts]
 
 

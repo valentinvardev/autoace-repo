@@ -19,9 +19,13 @@ FunASR Model License; code is MIT.
 from __future__ import annotations
 
 import re
+import threading
 from functools import lru_cache
 
 import numpy as np
+
+# The funasr model is a shared singleton and is not thread-safe.
+_lock = threading.Lock()
 
 _EMO = {"HAPPY", "SAD", "ANGRY", "NEUTRAL", "FEARFUL", "DISGUSTED", "SURPRISED"}
 _TAG = re.compile(r"<\|([A-Z_]+)\|>")
@@ -58,8 +62,9 @@ def analyze_segments(mono16k: np.ndarray,
     # but the per-call pipeline overhead is paid once instead of N times
     inputs = [np.ascontiguousarray(mono16k[int(a * 16000): int(b * 16000)])
               for a, b in segs]
-    results = model.generate(input=inputs, language="auto", use_itn=False,
-                             batch_size=4)
+    with _lock:
+        results = model.generate(input=inputs, language="auto", use_itn=False,
+                                 batch_size=4)
 
     weights: dict[str, float] = {}
     segments = []
