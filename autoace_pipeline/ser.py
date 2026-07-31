@@ -49,19 +49,24 @@ def analyze_segments(mono16k: np.ndarray,
              "segments": [(start, end, emotion), ...]}
     """
     model = _model()
+    segs = [(a, b) for a, b in speech if (b - a) * 16000 >= 1600]  # >=0.1 s
+    if not segs:
+        return {"fractions": {"NEUTRAL": 1.0}, "dominant": "NEUTRAL",
+                "bgm_s": 0.0, "segments": []}
+
+    # one generate() over all segments: same outputs as per-segment calls,
+    # but the per-call pipeline overhead is paid once instead of N times
+    inputs = [np.ascontiguousarray(mono16k[int(a * 16000): int(b * 16000)])
+              for a, b in segs]
+    results = model.generate(input=inputs, language="auto", use_itn=False,
+                             batch_size=4)
+
     weights: dict[str, float] = {}
     segments = []
     bgm_s = 0.0
-    for a, b in speech:
-        seg = mono16k[int(a * 16000): int(b * 16000)]
-        if len(seg) < 1600:  # <0.1 s tells us nothing
-            continue
-        res = model.generate(input=seg, language="auto", use_itn=False)
-        text = res[0]["text"] if res else ""
-        tags = set(_TAG.findall(text))
+    for (a, b), res in zip(segs, results):
+        tags = set(_TAG.findall(res.get("text", "")))
         emo = next((t for t in tags if t in _EMO), "NEUTRAL")
-        if emo == "UNKNOWN":
-            emo = "NEUTRAL"
         dur = b - a
         weights[emo] = weights.get(emo, 0.0) + dur
         if "BGM" in tags:

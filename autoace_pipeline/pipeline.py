@@ -110,10 +110,19 @@ def analyze_full(path: str) -> dict:
     Degrades gracefully: if overlap or the LLM is unavailable the result is
     still produced, with the gap recorded in the fusion trace and confidence.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     from .fusion import fuse
     from .llm import GeminiAnalyzer
 
     audio = load(path)
+
+    # The LLM call is pure I/O and independent of the local analysis; running
+    # them concurrently turns per-clip latency from (local + llm) into
+    # max(local, llm).
+    executor = ThreadPoolExecutor(max_workers=1)
+    llm_future = executor.submit(GeminiAnalyzer().analyze, path)
+
     feats = extract_features(audio, use_vad=True)
     local = decide_local(feats)
 
@@ -137,7 +146,10 @@ def analyze_full(path: str) -> dict:
         ser_info = None
         overlap_info.setdefault("ser_error", str(e)[:200])
 
-    llm = GeminiAnalyzer().analyze(path)
+    try:
+        llm = llm_future.result()
+    finally:
+        executor.shutdown(wait=False)
     result, trace = fuse(feats, local, llm, overlap_present,
                          overlap_info.get("overlap_ratio"), ser=ser_info)
 
